@@ -531,16 +531,26 @@
       }
     }
 
-    // 批次校验
+    // 批次校验（逐项严格核对：人数类型、源卡归属、迁移项引用，任一错误整批拒绝）
+    const gameById = new Map(data.games.map((g) => [g.id, g]));
     for (let bi = 0; bi < (data.batches || []).length; bi++) {
       const b = data.batches[bi];
       const bp = `batches[${bi}]`;
       if (!b || typeof b !== "object") { push(bp, "不是对象"); continue; }
       if (!b.id) push(bp + ".id", "缺少 id");
       if (!BATCH_STATUSES.includes(b.status)) push(bp + ".status", `非法状态「${b.status}」`);
-      if (b.sourceGameId && !gameIds.has(b.sourceGameId)) push(bp + ".sourceGameId", "源桌游引用失效");
-      if (b.targetGameId && !gameIds.has(b.targetGameId)) push(bp + ".targetGameId", "目标桌游引用失效");
+      const sourceGame = gameById.get(b.sourceGameId);
+      const targetGame = gameById.get(b.targetGameId);
+      if (!sourceGame) push(bp + ".sourceGameId", "源桌游缺失或引用失效");
+      if (!targetGame) push(bp + ".targetGameId", "目标桌游缺失或引用失效");
       if (!Array.isArray(b.items)) { push(bp + ".items", "必须是数组"); continue; }
+
+      const sourceCardIds = new Set((sourceGame?.cards || []).map((c) => c.id));
+      const targetCardIds = new Set((targetGame?.cards || []).map((c) => c.id));
+
+      if (b.name !== undefined && (typeof b.name !== "string" || !b.name.trim())) push(bp + ".name", "名称不能为空");
+      if (b.history !== undefined && !Array.isArray(b.history)) push(bp + ".history", "必须是数组");
+
       const itemIds = new Set();
       for (let ii = 0; ii < b.items.length; ii++) {
         const it = b.items[ii];
@@ -549,16 +559,81 @@
         if (!it.id) push(ip + ".id", "缺少 id");
         else if (itemIds.has(it.id)) push(ip + ".id", "迁移项 id 重复");
         else itemIds.add(it.id);
-        if (!it.snapshotText && !it.sourceCardId) push(ip, "缺少原文（snapshotText）");
-        if (it.action && !ACTIONS.includes(it.action)) push(ip + ".action", `非法动作「${it.action}」`);
-        if (it.targetSection && !S.includes(it.targetSection)) push(ip + ".targetSection", `非法分区「${it.targetSection}」`);
-        const tg = data.games.find((g) => g.id === b.targetGameId);
-        const ap = Number(it.applicablePlayers);
-        if (it.applicablePlayers !== undefined && tg && Number.isInteger(ap)) {
-          if (ap < Number(tg.minPlayers) || ap > Number(tg.maxPlayers)) {
-            push(ip + ".applicablePlayers", `人数 ${ap} 超出目标桌游 ${tg.minPlayers}-${tg.maxPlayers} 人范围`);
+
+        // 原文：必须是非空字符串（逐项处理时要保留原文）
+        if (typeof it.snapshotText !== "string" || !it.snapshotText.trim()) {
+          push(ip + ".snapshotText", "缺少迁移原文（snapshotText 必须是非空字符串）");
+        }
+        if (it.adaptedText !== undefined && typeof it.adaptedText !== "string") {
+          push(ip + ".adaptedText", "迁移文本必须是字符串");
+        }
+
+        // 源卡归属：sourceCardId 必须真实存在于源桌游
+        if (typeof it.sourceCardId !== "string" || !it.sourceCardId) {
+          push(ip + ".sourceCardId", "缺少源卡 id");
+        } else if (sourceGame && !sourceCardIds.has(it.sourceCardId)) {
+          push(ip + ".sourceCardId", `源卡「${it.sourceCardId}」不属于源桌游或已失效`);
+        }
+
+        if (it.action !== undefined && !ACTIONS.includes(it.action)) {
+          push(ip + ".action", `非法动作「${it.action}」`);
+        }
+        if (!S.includes(it.targetSection)) {
+          push(ip + ".targetSection", `非法或缺失分区「${it.targetSection}」`);
+        }
+
+        // 适用人数：必须是数字类型的整数（写成文字如 "四人" 直接拒绝）且落在目标桌游范围内
+        if (typeof it.applicablePlayers !== "number" || !Number.isInteger(it.applicablePlayers)) {
+          push(ip + ".applicablePlayers", `人数必须是整数（收到「${it.applicablePlayers}」）`);
+        } else if (targetGame &&
+          (it.applicablePlayers < Number(targetGame.minPlayers) ||
+            it.applicablePlayers > Number(targetGame.maxPlayers))) {
+          push(
+            ip + ".applicablePlayers",
+            `人数 ${it.applicablePlayers} 超出目标桌游 ${targetGame.minPlayers}-${targetGame.maxPlayers} 人范围`
+          );
+        }
+
+        if (it.refIds !== undefined && !Array.isArray(it.refIds)) {
+          push(ip + ".refIds", "引用必须是数组");
+        } else if (Array.isArray(it.refIds) && !it.refIds.every((r) => typeof r === "string")) {
+          push(ip + ".refIds", "引用 id 必须全部是字符串");
+        }
+
+        // 覆盖动作必须指向目标桌游中真实存在的卡
+        if (it.action === "overwrite") {
+          if (!it.overwriteCardId || !targetCardIds.has(it.overwriteCardId)) {
+            push(ip + ".overwriteCardId", "覆盖动作缺少有效的目标卡 id");
           }
         }
+      }
+
+      // 迁移项引用：每条 ref 必须能解析为「目标桌游现有卡」或「同批次另一迁移项」，且不能自引/成环
+      const edges = new Map();
+      for (const c of targetGame?.cards || []) {
+        edges.set(c.id, (c.refs || []).filter((r) => targetCardIds.has(r)));
+      }
+      for (const it of b.items) {
+        if (!it || typeof it !== "object") continue;
+        const refs = Array.isArray(it.refIds) ? it.refIds : [];
+        const resolved = [];
+        for (const r of refs) {
+          if (typeof r !== "string") continue; // 已在上面报错
+          if (r === it.id) {
+            push(`${bp}.items[${b.items.indexOf(it)}].refIds`, "迁移项不能引用自己");
+            continue;
+          }
+          if (targetCardIds.has(r) || itemIds.has(r)) resolved.push(r);
+          else push(`${bp}.items[${b.items.indexOf(it)}].refIds`, `失效引用「${r}」（既不在目标桌游中，也不是同批次迁移项）`);
+        }
+        edges.set(it.id, resolved);
+      }
+      const cyc = Store.findCycle(
+        [...targetCardIds, ...itemIds],
+        edges
+      );
+      if (cyc) {
+        push(`${bp}.items`, "迁移项引用形成循环：" + cyc.map((x) => String(x).slice(0, 8)).join(" → "));
       }
     }
 
