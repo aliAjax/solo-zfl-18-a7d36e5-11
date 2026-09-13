@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>桌游规则遗忘点卡片库</title>
+    <title>桌游规则迁移中心</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">聚会前快速复习</p>
-          <h1>桌游规则遗忘点卡片库</h1>
+          <p class="eyebrow">聚会前快速复习 · 跨桌游迁移规则</p>
+          <h1>桌游规则迁移中心</h1>
         </div>
         <div class="summary">
           <div>
@@ -19,108 +19,157 @@
             <strong id="gameCount">0</strong>
           </div>
           <div>
-            <span>遗忘点</span>
+            <span>规则卡</span>
             <strong id="ruleCount">0</strong>
           </div>
           <div>
-            <span>最久未玩</span>
-            <strong id="staleGame">-</strong>
+            <span>迁移批次</span>
+            <strong id="batchCount">0</strong>
           </div>
         </div>
       </header>
 
-      <section class="controls">
-        <label>
-          搜索
-          <input id="searchInput" type="search" placeholder="游戏名或规则关键词" />
-        </label>
-        <label>
-          人数
-          <select id="playerFilter">
-            <option value="all">全部</option>
-            <option value="2">适合2人</option>
-            <option value="3">适合3人</option>
-            <option value="4">适合4人</option>
-            <option value="5">适合5人</option>
-          </select>
-        </label>
-        <label>
-          复杂度
-          <select id="complexityFilter">
-            <option value="all">全部</option>
-            <option value="轻">轻</option>
-            <option value="中">中</option>
-            <option value="重">重</option>
-          </select>
-        </label>
-        <label>
-          排序
-          <select id="sortMode">
-            <option value="stale">最近未玩</option>
-            <option value="name">名称</option>
-            <option value="complexity">复杂度</option>
-          </select>
-        </label>
-      </section>
+      <nav class="tabs" id="viewTabs">
+        <button type="button" class="tab active" data-view="library">卡片库</button>
+        <button type="button" class="tab" data-view="migration">迁移中心</button>
+      </nav>
 
-      <section class="layout">
-        <aside class="panel">
-          <h2>新增桌游</h2>
-          <form id="gameForm" class="game-form">
-            <label>
-              名称
-              <input id="nameInput" required placeholder="例：勃艮第城堡" />
-            </label>
-            <div class="split">
-              <label>
-                最少人数
-                <input id="minPlayersInput" type="number" min="1" max="12" value="2" required />
-              </label>
-              <label>
-                最多人数
-                <input id="maxPlayersInput" type="number" min="1" max="12" value="4" required />
-              </label>
-            </div>
-            <div class="split">
-              <label>
-                时长分钟
-                <input id="durationInput" type="number" min="5" value="90" required />
-              </label>
-              <label>
-                复杂度
-                <select id="complexityInput">
-                  <option value="轻">轻</option>
-                  <option value="中" selected>中</option>
-                  <option value="重">重</option>
-                </select>
-              </label>
-            </div>
-            <label>
-              上次游玩
-              <input id="lastPlayedInput" type="date" required />
-            </label>
-            <label>
-              封面图
-              <input id="coverInput" type="file" accept="image/*" />
-            </label>
-            <button class="primary" type="submit">加入收藏</button>
-          </form>
-        </aside>
-
-        <section class="panel list-panel">
-          <div class="panel-head">
-            <h2>收藏列表</h2>
-            <span id="visibleCount"></span>
-          </div>
-          <div id="gameList" class="game-list"></div>
+      <!-- ============ 卡片库 ============ -->
+      <section id="libraryView" class="view active">
+        <div id="libraryFlash" class="lib-flash" hidden></div>
+        <section class="controls">
+          <label>
+            搜索
+            <input id="searchInput" type="search" placeholder="游戏名或规则关键词" />
+          </label>
+          <label>
+            人数
+            <select id="playerFilter">
+              <option value="all">全部</option>
+              <option value="2">适合2人</option>
+              <option value="3">适合3人</option>
+              <option value="4">适合4人</option>
+              <option value="5">适合5人</option>
+            </select>
+          </label>
+          <label>
+            复杂度
+            <select id="complexityFilter">
+              <option value="all">全部</option>
+              <option value="轻">轻</option>
+              <option value="中">中</option>
+              <option value="重">重</option>
+            </select>
+          </label>
+          <label>
+            排序
+            <select id="sortMode">
+              <option value="stale">最近未玩</option>
+              <option value="name">名称</option>
+              <option value="complexity">复杂度</option>
+            </select>
+          </label>
         </section>
 
-        <aside class="panel detail-panel">
-          <div id="detailView"></div>
-        </aside>
+        <section class="layout">
+          <aside class="panel">
+            <h2>新增桌游</h2>
+            <form id="gameForm" class="game-form">
+              <label>
+                名称
+                <input id="nameInput" required placeholder="例：勃艮第城堡" />
+              </label>
+              <div class="split">
+                <label>
+                  最少人数
+                  <input id="minPlayersInput" type="number" min="1" max="12" value="2" required />
+                </label>
+                <label>
+                  最多人数
+                  <input id="maxPlayersInput" type="number" min="1" max="12" value="4" required />
+                </label>
+              </div>
+              <div class="split">
+                <label>
+                  时长分钟
+                  <input id="durationInput" type="number" min="5" value="90" required />
+                </label>
+                <label>
+                  复杂度
+                  <select id="complexityInput">
+                    <option value="轻">轻</option>
+                    <option value="中" selected>中</option>
+                    <option value="重">重</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                上次游玩
+                <input id="lastPlayedInput" type="date" required />
+              </label>
+              <label>
+                封面图
+                <input id="coverInput" type="file" accept="image/*" />
+              </label>
+              <button class="primary" type="submit">加入收藏</button>
+            </form>
+          </aside>
+
+          <section class="panel list-panel">
+            <div class="panel-head">
+              <h2>收藏列表</h2>
+              <span id="visibleCount"></span>
+            </div>
+            <div id="gameList" class="game-list"></div>
+          </section>
+
+          <aside class="panel detail-panel">
+            <div id="detailView"></div>
+          </aside>
+        </section>
+      </section>
+
+      <!-- ============ 迁移中心 ============ -->
+      <section id="migrationView" class="view">
+        <div id="mergeBanner"></div>
+        <div id="toast" class="toast" hidden></div>
+        <section class="migration-layout">
+          <aside class="panel batch-panel">
+            <div class="panel-head">
+              <h2>迁移批次</h2>
+            </div>
+            <div class="batch-toolbar">
+              <button id="newBatchBtn" class="primary" type="button">＋ 新建批次</button>
+            </div>
+            <div id="batchList" class="batch-list"></div>
+            <div class="io-box">
+              <h3>导入 / 导出</h3>
+              <button id="exportBtn" type="button">导出全部 JSON</button>
+              <label class="io-line">
+                导入模式
+                <select id="importMode">
+                  <option value="replace">整库替换（校验失败不改数据）</option>
+                  <option value="merge">按 id 合并</option>
+                </select>
+              </label>
+              <label class="io-line file-line">
+                选择导入文件
+                <input id="importFile" type="file" accept="application/json,.json" />
+              </label>
+              <pre id="importReport" class="import-report" hidden></pre>
+            </div>
+          </aside>
+
+          <section class="panel editor-panel">
+            <div id="batchEditor"><p class="empty">左侧新建或选择一个迁移批次。</p></div>
+          </section>
+        </section>
       </section>
     </main>
 
+    <script src="storage.js"></script>
+    <script src="migration.js"></script>
     <script src="app.js"></script>
+    <script src="migration-ui.js"></script>
   </body>
 </html>
