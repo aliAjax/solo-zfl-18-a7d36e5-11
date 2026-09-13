@@ -568,7 +568,11 @@
           push(ip + ".adaptedText", "迁移文本必须是字符串");
         }
 
-        // 源卡归属：sourceCardId 必须真实存在于源桌游
+        // 来源核对：迁移项自带的 sourceGameId 必须与批次来源一致，
+        // 且 sourceCardId 必须真实归属于该源桌游（卡号碰巧同名也不通过）
+        if (typeof it.sourceGameId !== "string" || it.sourceGameId !== b.sourceGameId) {
+          push(ip + ".sourceGameId", `迁移项来源桌游「${it.sourceGameId}」与批次来源「${b.sourceGameId}」不一致`);
+        }
         if (typeof it.sourceCardId !== "string" || !it.sourceCardId) {
           push(ip + ".sourceCardId", "缺少源卡 id");
         } else if (sourceGame && !sourceCardIds.has(it.sourceCardId)) {
@@ -608,28 +612,42 @@
         }
       }
 
-      // 迁移项引用：每条 ref 必须能解析为「目标桌游现有卡」或「同批次另一迁移项」，且不能自引/成环
+      // 迁移项引用：每条 ref 必须能解析为「目标桌游现有卡」或「同批次另一【未跳过】迁移项」，
+      // 且不能自引/成环。跳过项不会迁入，因此不能作为引用目标，也不参与成环。
+      const activeItemIds = new Set(
+        b.items
+          .filter((it) => it && typeof it === "object" && it.id && it.action !== "skip")
+          .map((it) => it.id)
+      );
       const edges = new Map();
       for (const c of targetGame?.cards || []) {
         edges.set(c.id, (c.refs || []).filter((r) => targetCardIds.has(r)));
       }
-      for (const it of b.items) {
+      for (let rii = 0; rii < b.items.length; rii++) {
+        const it = b.items[rii];
         if (!it || typeof it !== "object") continue;
+        if (it.action === "skip") continue; // 跳过项不迁入：不校验其引用，也不加入图
+        const rip = `${bp}.items[${rii}].refIds`;
         const refs = Array.isArray(it.refIds) ? it.refIds : [];
         const resolved = [];
         for (const r of refs) {
           if (typeof r !== "string") continue; // 已在上面报错
           if (r === it.id) {
-            push(`${bp}.items[${b.items.indexOf(it)}].refIds`, "迁移项不能引用自己");
+            push(rip, "迁移项不能引用自己");
             continue;
           }
-          if (targetCardIds.has(r) || itemIds.has(r)) resolved.push(r);
-          else push(`${bp}.items[${b.items.indexOf(it)}].refIds`, `失效引用「${r}」（既不在目标桌游中，也不是同批次迁移项）`);
+          if (targetCardIds.has(r) || activeItemIds.has(r)) {
+            resolved.push(r);
+          } else if (itemIds.has(r)) {
+            push(rip, `失效引用「${r}」：目标迁移项已标记为跳过，不会随批次迁入`);
+          } else {
+            push(rip, `失效引用「${r}」（既不在目标桌游中，也不是同批次未跳过的迁移项）`);
+          }
         }
         edges.set(it.id, resolved);
       }
       const cyc = Store.findCycle(
-        [...targetCardIds, ...itemIds],
+        [...targetCardIds, ...activeItemIds],
         edges
       );
       if (cyc) {
